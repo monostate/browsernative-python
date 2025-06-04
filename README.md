@@ -209,7 +209,7 @@ with BrowserNativeClient('your-api-key') as client:
 
 ## 📋 Requirements
 
-- Python 3.7+
+- Python 3.8+
 - `requests` library (automatically installed)
 
 ## 🤝 Contributing
