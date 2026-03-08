@@ -4,7 +4,8 @@ Browser Native Client implementation
 
 import time
 import json
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, List, Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from urllib.parse import urljoin
 
@@ -42,7 +43,7 @@ class BrowserNativeClient:
         self.session = requests.Session()
         self.session.headers.update({
             'x-api-key': self.api_key,
-            'User-Agent': 'Browser Native Python Client/1.0.0'
+            'User-Agent': 'Browser Native Python Client/2.0.0'
         })
     
     def scrape(self, url: str, **options) -> Dict[str, Any]:
@@ -132,6 +133,67 @@ class BrowserNativeClient:
         
         return self._make_request('/aireply', payload)
     
+    def bulk_scrape(
+        self,
+        urls: List[str],
+        concurrency: int = 5,
+        continue_on_error: bool = True,
+        progress_callback: Optional[Callable] = None,
+        **options
+    ) -> Dict[str, Any]:
+        """
+        Scrape multiple URLs concurrently.
+
+        Args:
+            urls: List of URLs to scrape
+            concurrency: Max concurrent requests (default: 5)
+            continue_on_error: Keep going on failures (default: True)
+            progress_callback: Called with {'processed', 'total', 'percentage'}
+            **options: Passed through to scrape()
+
+        Returns:
+            dict with 'results' list and 'stats' summary
+        """
+        results = []
+        start_time = time.time()
+        processed = 0
+
+        def _scrape_one(url):
+            try:
+                result = self.scrape(url, **options)
+                return {'url': url, **result}
+            except Exception as e:
+                return {'url': url, 'success': False, 'error': str(e)}
+
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = {executor.submit(_scrape_one, url): url for url in urls}
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result)
+                processed += 1
+                if progress_callback:
+                    progress_callback({
+                        'processed': processed,
+                        'total': len(urls),
+                        'percentage': (processed / len(urls)) * 100,
+                    })
+                if not continue_on_error and not result.get('success'):
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    break
+
+        successful = sum(1 for r in results if r.get('success'))
+        total_time = int((time.time() - start_time) * 1000)
+        return {
+            'results': results,
+            'stats': {
+                'total': len(urls),
+                'successful': successful,
+                'failed': len(results) - successful,
+                'totalTime': total_time,
+                'averageTime': total_time // max(len(results), 1),
+            },
+        }
+
     def get_usage(self, days: int = 30) -> Dict[str, Any]:
         """
         Get account usage statistics.
@@ -310,14 +372,46 @@ def quick_analyze(url: str, question: str, api_key: str, **options) -> Dict[str,
 def quick_shot(url: str, api_key: str, **options) -> Dict[str, Any]:
     """
     Convenience function for quick screenshot capture.
-    
+
     Args:
         url (str): The URL to capture
         api_key (str): Your API key
         **options: Additional options
-        
+
     Returns:
         dict: Screenshot result
     """
     with BrowserNativeClient(api_key, **options) as client:
         return client.quickshot(url, **options)
+
+
+def bulk_scrape(
+    urls: List[str],
+    api_key: str,
+    concurrency: int = 5,
+    continue_on_error: bool = True,
+    progress_callback: Optional[Callable] = None,
+    **options
+) -> Dict[str, Any]:
+    """
+    Convenience function for bulk scraping multiple URLs.
+
+    Args:
+        urls: List of URLs to scrape
+        api_key: Your API key
+        concurrency: Max concurrent requests (default: 5)
+        continue_on_error: Keep going on failures (default: True)
+        progress_callback: Called with progress dict
+        **options: Passed through to scrape()
+
+    Returns:
+        dict with 'results' list and 'stats' summary
+    """
+    with BrowserNativeClient(api_key, **options) as client:
+        return client.bulk_scrape(
+            urls,
+            concurrency=concurrency,
+            continue_on_error=continue_on_error,
+            progress_callback=progress_callback,
+            **options,
+        )

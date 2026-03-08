@@ -1,228 +1,132 @@
-# Browser Native Python Client
+# browsernative
 
-> **Lightning-fast web scraping Python SDK - 11x faster than traditional scrapers**
+> Python client for the Browser Native web scraping API
 
-[![PyPI version](https://img.shields.io/pypi/v/browsernative.svg)](https://pypi.org/project/browsernative/)
+[![PyPI](https://img.shields.io/pypi/v/browsernative.svg)](https://pypi.org/project/browsernative/)
 [![Python](https://img.shields.io/pypi/pyversions/browsernative.svg)](https://pypi.org/project/browsernative/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Official Python client for the Browser Native web scraping API. Extract content, take screenshots, and analyze websites with AI - all with intelligent fallback mechanisms.
+Lightweight client for scraping, screenshots, and AI analysis via the Browser Native API. Single dependency (`requests`).
 
-## 🚀 Quick Start
-
-### Installation
+## Install
 
 ```bash
 pip install browsernative
 ```
 
-### Basic Usage
+Get an API key at [bnca.monostate.ai](https://bnca.monostate.ai).
+
+## Usage
 
 ```python
 from browsernative import BrowserNativeClient
 
-# Initialize client
 client = BrowserNativeClient('your-api-key')
 
-# Scrape a webpage
+# Scrape
 result = client.scrape('https://example.com')
-print(result['data'])  # Extracted content
 
-# Take a screenshot
+# Force a specific scraping method
+result = client.scrape('https://example.com', method='lightpanda')
+
+# Screenshot
 screenshot = client.screenshot('https://example.com')
-print(screenshot['data']['screenshot'])  # Base64 image
 
-# AI-powered Q&A
-answer = client.analyze('https://example.com', 'What is this website about?')
-print(answer['data']['answer'])  # AI response
+# Quick screenshot (faster, no content extraction)
+quick = client.quickshot('https://example.com')
+
+# AI Q&A
+answer = client.analyze('https://example.com', 'What is this site about?')
 ```
 
-### One-liner Convenience Functions
+### Convenience functions
 
 ```python
-from browsernative import quick_scrape, quick_analyze, quick_shot
+from browsernative import quick_scrape, quick_shot, quick_analyze, bulk_scrape
 
-# Quick scraping
-data = quick_scrape('https://example.com', 'your-api-key')
-
-# Quick AI analysis
-result = quick_analyze(
-    'https://example.com', 
-    'What services do they offer?',
-    'your-api-key'
-)
-
-# Quick screenshot
-screenshot = quick_shot('https://example.com', 'your-api-key')
+content = quick_scrape('https://example.com', 'your-api-key')
+shot = quick_shot('https://example.com', 'your-api-key')
+answer = quick_analyze('https://example.com', 'What is this?', 'your-api-key')
 ```
 
-## 📖 Features
+### Bulk scraping
 
-- **🚀 Lightning Fast**: 11x faster than traditional scrapers
-- **🔄 Intelligent Fallback**: Multi-tier system (Direct → Lightpanda → Puppeteer)
-- **🤖 AI Integration**: Built-in Q&A capabilities with OpenRouter/OpenAI
-- **📸 Screenshots**: Full page captures with optimization
-- **📄 PDF Support**: Automatic PDF parsing and text extraction
-- **🔒 Type Safe**: Full type hints for better IDE support
-- **♻️ Context Manager**: Automatic resource cleanup
+```python
+urls = ['https://site1.com', 'https://site2.com', 'https://site3.com']
 
-## 🛠️ API Reference
+result = client.bulk_scrape(
+    urls,
+    concurrency=5,
+    continue_on_error=True,
+    progress_callback=lambda p: print(f"{p['percentage']:.1f}%"),
+)
 
-### Client Initialization
+print(f"{result['stats']['successful']}/{result['stats']['total']} succeeded")
+```
+
+### Context manager
+
+```python
+with BrowserNativeClient('your-api-key') as client:
+    result = client.scrape('https://example.com')
+    # Session closed automatically
+```
+
+## API Reference
+
+### Client options
 
 ```python
 client = BrowserNativeClient(
     api_key='your-api-key',
-    base_url='https://bnca-api.fly.dev',  # Optional
-    timeout=30,                           # Request timeout in seconds
-    retries=2,                           # Number of retries
-    verbose=False                        # Enable debug logging
+    base_url='https://bnca-api.fly.dev',  # API endpoint
+    timeout=30,                            # Seconds
+    retries=2,                             # Retry attempts
+    verbose=False,                         # Debug logging
 )
 ```
 
 ### Methods
 
-#### `scrape(url, **options)`
-Extract structured content from any webpage.
+| Method | Description |
+|--------|-------------|
+| `scrape(url, **opts)` | Extract structured content |
+| `screenshot(url, **opts)` | Screenshot with content extraction |
+| `quickshot(url, **opts)` | Fast screenshot only |
+| `analyze(url, question, **opts)` | AI-powered Q&A |
+| `bulk_scrape(urls, **opts)` | Scrape multiple URLs concurrently |
+| `get_usage(days=30)` | Account usage statistics |
+| `health_check()` | API health status |
+
+### Scrape options
+
+Pass as keyword arguments:
+
+- `method` -- `'auto'`, `'direct'`, `'lightpanda'`, or `'puppeteer'`
+- `include_screenshot` -- Include screenshot in response
+- `wait_for_selector` -- CSS selector to wait for
+- `user_agent` -- Custom user agent
+
+### Response shape
 
 ```python
-result = client.scrape(
-    'https://example.com',
-    include_screenshot=True  # Optional: include screenshot
-)
-
-# Response includes:
-# - data: Extracted content (title, text, meta, etc.)
-# - method: Extraction method used
-# - performance: Timing metrics
+{
+    'success': True,
+    'data': { 'title': ..., 'content': ..., ... },
+    'responseTime': 1234,
+    'attempt': 1,
+}
 ```
 
-#### `analyze(url, question, **options)`
-Ask questions about any webpage using AI.
+## Requirements
 
-```python
-result = client.analyze(
-    'https://news.site.com',
-    'What are the top 3 stories?',
-    include_screenshot=False
-)
+- Python 3.9+
+- `requests` (installed automatically)
 
-# Response includes:
-# - answer: AI-generated response
-# - metadata: Performance and method info
-```
+## Changelog
 
-#### `screenshot(url, **options)`
-Capture full-page screenshots.
+See [CHANGELOG.md](./CHANGELOG.md).
 
-```python
-result = client.screenshot('https://example.com')
-base64_image = result['data']['screenshot']
-```
+## License
 
-#### `quickshot(url, **options)`
-Optimized screenshot capture for speed.
-
-```python
-result = client.quickshot('https://example.com')
-```
-
-#### `get_usage(days=30)`
-Get your API usage statistics.
-
-```python
-usage = client.get_usage(days=7)
-print(usage['data'])
-```
-
-#### `health_check()`
-Check API status and your account.
-
-```python
-health = client.health_check()
-print(health['data']['status'])
-```
-
-## 🔄 Context Manager Support
-
-Automatically clean up resources:
-
-```python
-with BrowserNativeClient('your-api-key') as client:
-    result = client.scrape('https://example.com')
-    # Resources are automatically cleaned up
-```
-
-## 🎯 Advanced Examples
-
-### Batch Processing
-
-```python
-urls = ['https://site1.com', 'https://site2.com', 'https://site3.com']
-
-with BrowserNativeClient('your-api-key') as client:
-    for url in urls:
-        try:
-            result = client.scrape(url)
-            print(f"✓ {url}: {result['data']['title']}")
-        except Exception as e:
-            print(f"✗ {url}: {e}")
-```
-
-### Error Handling
-
-```python
-from browsernative import BrowserNativeClient
-
-client = BrowserNativeClient('your-api-key', verbose=True)
-
-try:
-    result = client.scrape('https://invalid-url')
-except ValueError as e:
-    print(f"Invalid input: {e}")
-except Exception as e:
-    print(f"API error: {e}")
-```
-
-### AI Analysis with Context
-
-```python
-# Analyze multiple aspects of a page
-questions = [
-    "What is the main topic?",
-    "Is there pricing information?",
-    "What features are highlighted?"
-]
-
-with BrowserNativeClient('your-api-key') as client:
-    for question in questions:
-        result = client.analyze('https://product.com', question)
-        print(f"Q: {question}")
-        print(f"A: {result['data']['answer']}\n")
-```
-
-## 🔑 Getting an API Key
-
-1. Visit [https://bnca.monostate.ai](https://bnca.monostate.ai)
-2. Sign up for an account
-3. Generate your API key from the dashboard
-
-## 📋 Requirements
-
-- Python 3.8+
-- `requests` library (automatically installed)
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## 🔗 Links
-
-- [API Documentation](https://docs.bnca.dev)
-- [GitHub Repository](https://github.com/monostate/browsernative-python)
-- [PyPI Package](https://pypi.org/project/browsernative/)
-- [Report Issues](https://github.com/monostate/browsernative-python/issues)
+MIT

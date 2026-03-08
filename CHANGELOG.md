@@ -5,6 +5,18 @@ All notable changes to the Browser Native Python Client will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-03-07
+
+### Added
+- `bulk_scrape()` method and convenience function with concurrent execution via ThreadPoolExecutor
+- `method` option to force specific scraping method (`'auto'`, `'direct'`, `'lightpanda'`, `'puppeteer'`)
+- Progress callback support for bulk operations
+
+### Changed
+- Minimum Python version bumped to 3.9 (3.8 is EOL)
+- Updated User-Agent to 2.0.0
+- Rewrote README — removed emojis, simplified documentation
+
 ## [1.0.1] - 2025-06-04
 
 ### Fixed
