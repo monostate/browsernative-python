@@ -4,10 +4,11 @@ Browser Native Client implementation
 
 import time
 import json
+import threading
 from typing import Dict, Any, Optional, Union, List, Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlencode
 
 
 class BrowserNativeClient:
@@ -206,10 +207,40 @@ class BrowserNativeClient:
         """
         return self._make_request('/stats', method='GET')
     
+    def create_session(
+        self,
+        mode: str = 'auto',
+        screen_width: Optional[int] = None,
+        screen_height: Optional[int] = None,
+    ) -> 'BrowserSession':
+        """
+        Create a persistent browser session via WebSocket.
+
+        Args:
+            mode: Browser mode - 'auto', 'headless', 'visual', or 'computer-use' (default: 'auto')
+            screen_width: Screen width for computer-use mode
+            screen_height: Screen height for computer-use mode
+
+        Returns:
+            BrowserSession: Connected browser session
+        """
+        ws_url = self.base_url.replace('https://', 'wss://').replace('http://', 'ws://')
+        query = {'apiKey': self.api_key, 'mode': mode}
+        if screen_width is not None:
+            query['screenWidth'] = str(screen_width)
+        if screen_height is not None:
+            query['screenHeight'] = str(screen_height)
+        params = urlencode(query)
+        url = f"{ws_url}/session?{params}"
+
+        session = BrowserSession(url, verbose=self.verbose)
+        session.connect()
+        return session
+
     def health_check(self) -> Dict[str, Any]:
         """
         Check API health and your account status.
-        
+
         Returns:
             dict: Health check result
         """
@@ -315,6 +346,236 @@ class BrowserNativeClient:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Clean up on context exit."""
+        self.close()
+
+
+class BrowserSession:
+    """
+    Persistent browser session over WebSocket.
+
+    Provides real-time browser control with methods for navigation,
+    interaction, screenshots, and content extraction.
+    """
+
+    def __init__(self, url: str, verbose: bool = False):
+        self._url = url
+        self._ws = None
+        self._next_id = 1
+        self._pending = {}  # id -> threading.Event, result holder
+        self._verbose = verbose
+        self._event_handlers = {}
+        self.session_id = None
+        self.backend = None
+        self.vnc_url = None
+        self._lock = threading.Lock()
+        self._recv_thread = None
+
+    def connect(self, timeout: float = 15.0):
+        """Connect to the session WebSocket."""
+        try:
+            import websocket
+        except ImportError:
+            raise ImportError(
+                'websocket-client package required for sessions. '
+                'Install it: pip install websocket-client'
+            )
+
+        connected = threading.Event()
+        connect_error = [None]
+
+        self._ws = websocket.WebSocketApp(
+            self._url,
+            on_message=lambda ws, msg: self._on_message(msg, connected),
+            on_error=lambda ws, err: self._on_error(err, connected, connect_error),
+            on_close=lambda ws, code, reason: self._on_close(code, reason),
+        )
+
+        self._recv_thread = threading.Thread(
+            target=self._ws.run_forever, daemon=True
+        )
+        self._recv_thread.start()
+
+        if not connected.wait(timeout):
+            self._ws.close()
+            if connect_error[0]:
+                raise ConnectionError(f"WebSocket connection failed: {connect_error[0]}")
+            raise ConnectionError("WebSocket connection timed out")
+
+        if connect_error[0]:
+            raise ConnectionError(f"WebSocket connection failed: {connect_error[0]}")
+
+    def _on_message(self, raw_data, connected_event=None):
+        try:
+            msg = json.loads(raw_data)
+        except json.JSONDecodeError:
+            return
+
+        if msg.get('type') == 'connected':
+            self.session_id = msg.get('sessionId')
+            self.backend = msg.get('backend')
+            self.vnc_url = msg.get('vncUrl')
+            if self._verbose:
+                print(f"Browser Native: Session {self.session_id} connected ({self.backend})")
+            if connected_event:
+                connected_event.set()
+            return
+
+        if msg.get('type') == 'fallback':
+            self.backend = msg.get('to')
+            if self._verbose:
+                print(f"Browser Native: Fallback {msg.get('from')} -> {msg.get('to')} ({msg.get('reason')})")
+            handler = self._event_handlers.get('fallback')
+            if handler:
+                handler(msg)
+            return
+
+        if msg.get('type') == 'closed':
+            if self._verbose:
+                print(f"Browser Native: Session closed ({msg.get('reason')})")
+            handler = self._event_handlers.get('closed')
+            if handler:
+                handler(msg)
+            return
+
+        msg_id = msg.get('id')
+        if msg_id is not None and msg_id in self._pending:
+            entry = self._pending.pop(msg_id)
+            if msg.get('backend'):
+                self.backend = msg['backend']
+            if msg.get('type') == 'error':
+                entry['error'] = msg.get('message', 'Unknown error')
+            else:
+                entry['data'] = msg.get('data')
+            entry['event'].set()
+
+    def _on_error(self, error, connected_event=None, connect_error=None):
+        if connect_error is not None:
+            connect_error[0] = str(error)
+        if connected_event:
+            connected_event.set()
+
+    def _on_close(self, code, reason):
+        with self._lock:
+            for entry in self._pending.values():
+                entry['error'] = f"Session closed: {reason or 'unknown'}"
+                entry['event'].set()
+            self._pending.clear()
+
+    def _send(self, action: str, timeout: float = 30.0, **params) -> Any:
+        """Send an action and wait for the response."""
+        if not self._ws or not self._recv_thread or not self._recv_thread.is_alive():
+            raise ConnectionError("Session not connected")
+
+        with self._lock:
+            msg_id = self._next_id
+            self._next_id += 1
+            event = threading.Event()
+            entry = {'event': event, 'data': None, 'error': None}
+            self._pending[msg_id] = entry
+
+        payload = {'id': msg_id, 'action': action, **params}
+        self._ws.send(json.dumps(payload))
+
+        if not event.wait(timeout):
+            self._pending.pop(msg_id, None)
+            raise TimeoutError(f"Action '{action}' timed out after {timeout}s")
+
+        if entry['error']:
+            raise RuntimeError(entry['error'])
+        return entry['data']
+
+    def on(self, event: str, handler: Callable):
+        """Register an event handler for 'fallback' or 'closed' events."""
+        self._event_handlers[event] = handler
+        return self
+
+    def goto(self, url: str) -> Any:
+        return self._send('goto', url=url)
+
+    def click(self, selector: str, **options) -> Any:
+        return self._send('click', selector=selector, **options)
+
+    def type(self, selector: str, text: str, **options) -> Any:
+        return self._send('type', selector=selector, text=text, **options)
+
+    def scroll(self, direction: str = 'down', amount: int = 500) -> Any:
+        return self._send('scroll', direction=direction, amount=amount)
+
+    def hover(self, selector: str) -> Any:
+        return self._send('hover', selector=selector)
+
+    def select(self, selector: str, *values: str) -> Any:
+        return self._send('select', selector=selector, values=list(values))
+
+    def press_key(self, key: str) -> Any:
+        return self._send('pressKey', key=key)
+
+    def go_back(self) -> Any:
+        return self._send('goBack')
+
+    def go_forward(self) -> Any:
+        return self._send('goForward')
+
+    def screenshot(self, **options) -> Any:
+        return self._send('screenshot', **options)
+
+    def get_page_state(self, **options) -> Any:
+        return self._send('getPageState', **options)
+
+    def extract_content(self) -> Any:
+        return self._send('extractContent')
+
+    def wait_for(self, selector: str, timeout: Optional[float] = None) -> Any:
+        params = {'selector': selector}
+        if timeout is not None:
+            params['timeout'] = timeout
+        return self._send('waitFor', **params)
+
+    def evaluate(self, fn: str) -> Any:
+        return self._send('evaluate', fn=fn)
+
+    def get_cookies(self) -> Any:
+        return self._send('getCookies')
+
+    def set_cookies(self, cookies: List[Dict]) -> Any:
+        return self._send('setCookies', cookies=cookies)
+
+    # Coordinate-based actions (computer-use mode)
+
+    def mouse_move(self, x: int, y: int) -> Any:
+        return self._send('mouseMove', x=x, y=y)
+
+    def click_at(self, x: int, y: int, button: str = 'left') -> Any:
+        return self._send('clickAt', x=x, y=y, button=button)
+
+    def double_click_at(self, x: int, y: int, button: str = 'left') -> Any:
+        return self._send('doubleClickAt', x=x, y=y, button=button)
+
+    def drag(self, start_x: int, start_y: int, end_x: int, end_y: int) -> Any:
+        return self._send('drag', startX=start_x, startY=start_y, endX=end_x, endY=end_y)
+
+    def scroll_at(self, x: int, y: int, direction: str, amount: int = 3) -> Any:
+        return self._send('scrollAt', x=x, y=y, direction=direction, amount=amount)
+
+    def type_text(self, text: str) -> Any:
+        return self._send('typeText', text=text)
+
+    def get_cursor_position(self) -> Any:
+        return self._send('getCursorPosition')
+
+    def get_screen_size(self) -> Any:
+        return self._send('getScreenSize')
+
+    def close(self):
+        """Close the session."""
+        if self._ws:
+            self._ws.close()
+            self._ws = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
 

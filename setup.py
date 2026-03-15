@@ -10,7 +10,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 # Read version from __init__.py
-version = "2.0.0"
+version = "2.1.0"
 with open("browsernative/__init__.py", "r") as f:
     for line in f:
         if line.startswith("__version__"):
@@ -44,6 +44,7 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         "requests>=2.25.0",
+        "websocket-client>=1.6.0",
     ],
     extras_require={
         "dev": [

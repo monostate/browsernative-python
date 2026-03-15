@@ -118,10 +118,57 @@ Pass as keyword arguments:
 }
 ```
 
+### Browser sessions
+
+Persistent browser sessions with real-time control over WebSocket:
+
+```python
+session = client.create_session(mode='auto')
+
+session.goto('https://example.com')
+session.click('#login')
+session.type('#email', 'user@example.com')
+state = session.get_page_state(includeScreenshot=True)
+session.screenshot()
+
+# Listen for backend fallback events
+session.on('fallback', lambda e: print(f"{e['from']} -> {e['to']}: {e['reason']}"))
+
+session.close()
+```
+
+Modes: `auto` (LightPanda + Chrome fallback), `headless`, `visual`, `computer-use`.
+
+#### Computer use mode
+
+For AI agents that control the browser by pixel coordinates:
+
+```python
+session = client.create_session(mode='computer-use', screen_width=1280, screen_height=800)
+
+session.goto('https://example.com')
+session.click_at(640, 400)
+session.type_text('hello world')
+session.mouse_move(100, 200)
+session.drag(10, 20, 300, 400)
+session.scroll_at(640, 400, 'down', 5)
+pos = session.get_cursor_position()
+size = session.get_screen_size()
+screenshot = session.screenshot()
+
+# VNC streaming URL
+print(session.vnc_url)
+
+session.close()
+```
+
+Requires `websocket-client`: `pip install websocket-client`
+
 ## Requirements
 
 - Python 3.9+
 - `requests` (installed automatically)
+- `websocket-client` (for browser sessions)
 
 ## Changelog
 
