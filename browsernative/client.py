@@ -11,41 +11,55 @@ import requests
 from urllib.parse import urljoin, urlencode
 
 
+USER_AGENT = 'Browser Native Python Client/3.0.0'
+
+
 class BrowserNativeClient:
     """
-    Browser Native Client for web scraping with intelligent fallback system.
-    
+    Client for a self-hosted node-scraper API (the HTTP/WebSocket service
+    built on @monostate/node-scraper). There is no hosted default: you run
+    the API and point the client at it.
+
     Args:
-        api_key (str): Your Browser Native API key
-        base_url (str, optional): API base URL. Defaults to 'https://bnca-api.fly.dev'
+        api_key (str, optional): API key sent as x-api-key, if your deployment requires one
+        base_url (str): Base URL of your API, e.g. 'http://localhost:3001' (required)
         timeout (int, optional): Request timeout in seconds. Defaults to 30
         retries (int, optional): Number of retries. Defaults to 2
         verbose (bool, optional): Enable verbose logging. Defaults to False
     """
-    
+
     def __init__(
         self,
-        api_key: str,
-        base_url: str = 'https://bnca-api.fly.dev',
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
         timeout: int = 30,
         retries: int = 2,
         verbose: bool = False
     ):
-        if not api_key:
-            raise ValueError('API key is required. Get one at https://bnca.monostate.ai')
-        
-        self.api_key = api_key
-        self.base_url = base_url.rstrip('/')
+        if not base_url:
+            raise ValueError(
+                'base_url is required. The hosted Browser Native API has been retired: '
+                'run your own node-scraper API and point the client at it, e.g. '
+                "BrowserNativeClient(base_url='http://localhost:3001', api_key='...')"
+            )
+        if not str(base_url).startswith(('http://', 'https://')):
+            raise ValueError(
+                f"base_url must be an http(s) URL, got {base_url!r}. "
+                "Note: the first positional argument is api_key; pass base_url by keyword."
+            )
+
+        self.api_key = api_key or None
+        self.base_url = str(base_url).rstrip('/')
         self.timeout = timeout
         self.retries = retries
         self.verbose = verbose
-        
+
         # Set up session for connection pooling
         self.session = requests.Session()
-        self.session.headers.update({
-            'x-api-key': self.api_key,
-            'User-Agent': 'Browser Native Python Client/2.0.0'
-        })
+        headers = {'User-Agent': USER_AGENT}
+        if self.api_key:
+            headers['x-api-key'] = self.api_key
+        self.session.headers.update(headers)
     
     def scrape(self, url: str, **options) -> Dict[str, Any]:
         """
@@ -225,7 +239,9 @@ class BrowserNativeClient:
             BrowserSession: Connected browser session
         """
         ws_url = self.base_url.replace('https://', 'wss://').replace('http://', 'ws://')
-        query = {'apiKey': self.api_key, 'mode': mode}
+        query = {'mode': mode}
+        if self.api_key:
+            query['apiKey'] = self.api_key
         if screen_width is not None:
             query['screenWidth'] = str(screen_width)
         if screen_height is not None:
@@ -581,13 +597,13 @@ class BrowserSession:
 
 # Convenience functions
 
-def quick_scrape(url: str, api_key: str, **options) -> Dict[str, Any]:
+def quick_scrape(url: str, api_key: Optional[str] = None, **options) -> Dict[str, Any]:
     """
     Convenience function for quick scraping without instantiating a client.
     
     Args:
         url (str): The URL to scrape
-        api_key (str): Your API key
+        api_key (str, optional): API key, if your deployment requires one. Pass base_url=... in options.
         **options: Additional options
         
     Returns:
@@ -597,13 +613,13 @@ def quick_scrape(url: str, api_key: str, **options) -> Dict[str, Any]:
         return client.scrape(url, **options)
 
 
-def quick_screenshot(url: str, api_key: str, **options) -> Dict[str, Any]:
+def quick_screenshot(url: str, api_key: Optional[str] = None, **options) -> Dict[str, Any]:
     """
     Convenience function for taking screenshots.
     
     Args:
         url (str): The URL to capture
-        api_key (str): Your API key
+        api_key (str, optional): API key, if your deployment requires one. Pass base_url=... in options.
         **options: Additional options
         
     Returns:
@@ -613,14 +629,14 @@ def quick_screenshot(url: str, api_key: str, **options) -> Dict[str, Any]:
         return client.screenshot(url, **options)
 
 
-def quick_analyze(url: str, question: str, api_key: str, **options) -> Dict[str, Any]:
+def quick_analyze(url: str, question: str, api_key: Optional[str] = None, **options) -> Dict[str, Any]:
     """
     Convenience function for AI analysis.
     
     Args:
         url (str): The URL to analyze
         question (str): The question to answer
-        api_key (str): Your API key
+        api_key (str, optional): API key, if your deployment requires one. Pass base_url=... in options.
         **options: Additional options
         
     Returns:
@@ -630,13 +646,13 @@ def quick_analyze(url: str, question: str, api_key: str, **options) -> Dict[str,
         return client.analyze(url, question, **options)
 
 
-def quick_shot(url: str, api_key: str, **options) -> Dict[str, Any]:
+def quick_shot(url: str, api_key: Optional[str] = None, **options) -> Dict[str, Any]:
     """
     Convenience function for quick screenshot capture.
 
     Args:
         url (str): The URL to capture
-        api_key (str): Your API key
+        api_key (str, optional): API key, if your deployment requires one. Pass base_url=... in options.
         **options: Additional options
 
     Returns:
@@ -648,7 +664,7 @@ def quick_shot(url: str, api_key: str, **options) -> Dict[str, Any]:
 
 def bulk_scrape(
     urls: List[str],
-    api_key: str,
+    api_key: Optional[str] = None,
     concurrency: int = 5,
     continue_on_error: bool = True,
     progress_callback: Optional[Callable] = None,
@@ -659,7 +675,7 @@ def bulk_scrape(
 
     Args:
         urls: List of URLs to scrape
-        api_key: Your API key
+        api_key: API key, if your deployment requires one. Pass base_url=... in options.
         concurrency: Max concurrent requests (default: 5)
         continue_on_error: Keep going on failures (default: True)
         progress_callback: Called with progress dict

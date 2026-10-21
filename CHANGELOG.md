@@ -5,6 +5,18 @@ All notable changes to the Browser Native Python Client will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-10-20
+
+### Breaking Changes
+- **No hosted default.** The Browser Native hosted API (bnca-api.fly.dev / bnca.monostate.ai) has been retired. `base_url` is now required and points at a node-scraper API you host.
+- **API key is optional.** `BrowserNativeClient(base_url=..., api_key=None)`; the `x-api-key` header and the WebSocket `apiKey` parameter are only sent when a key is set. `api_key` remains the first positional argument; pass `base_url` by keyword.
+- Convenience functions take `base_url` (and an optional `api_key`) as keyword arguments.
+
+### Added
+- Responses carry node-scraper v3 outcome fields in `metadata`: `contentStatus`, `httpStatus`, `finalUrl`.
+- A pytest suite (`tests/test_client.py`) against a local stub API.
+- README documents the HTTP/WebSocket contract to host.
+
 ## [2.0.0] - 2026-03-07
 
 ### Added

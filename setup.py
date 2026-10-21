@@ -22,7 +22,7 @@ setup(
     version=version,
     author="BNCA Team",
     author_email="support@monostate.ai",
-    description="Lightning-fast web scraping Python SDK - 11x faster than traditional scrapers",
+    description="Python client for a self-hosted node-scraper API (web scraping, screenshots, AI analysis, browser sessions)",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/monostate/browsernative-python",
@@ -72,6 +72,6 @@ setup(
     project_urls={
         "Bug Reports": "https://github.com/monostate/browsernative-python/issues",
         "Source": "https://github.com/monostate/browsernative-python",
-        "Documentation": "https://docs.bnca.dev",
+        "Documentation": "https://github.com/monostate/browsernative-python#readme",
     },
 )

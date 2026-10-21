@@ -1,7 +1,7 @@
 """
 Browser Native Python Client SDK
 
-A lightweight Python client for the Browser Native web scraping API.
+A lightweight Python client for a self-hosted node-scraper API.
 """
 
 from .client import (
@@ -14,7 +14,7 @@ from .client import (
     bulk_scrape,
 )
 
-__version__ = "2.2.0"
+__version__ = "3.0.0"
 __all__ = [
     "BrowserNativeClient",
     "BrowserSession",

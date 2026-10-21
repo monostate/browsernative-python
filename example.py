@@ -6,8 +6,9 @@ Example usage of Browser Native Python Client
 import os
 from browsernative import BrowserNativeClient, quick_analyze
 
-# Get your API key from https://bnca.monostate.ai
-API_KEY = os.environ.get('BNCA_API_KEY', 'your-api-key-here')
+# Point SCRAPER_API_URL at your own node-scraper API; SCRAPER_API_KEY only if it requires one
+BASE_URL = os.environ.get('SCRAPER_API_URL', 'http://localhost:3001')
+API_KEY = os.environ.get('SCRAPER_API_KEY')  # None when your API needs no key
 
 def main():
     print("🌐 Browser Native Python Client Examples\n")
@@ -16,7 +17,7 @@ def main():
     print("Example 1: Basic Web Scraping")
     print("-" * 40)
     
-    with BrowserNativeClient(API_KEY) as client:
+    with BrowserNativeClient(api_key=API_KEY, base_url=BASE_URL) as client:
         result = client.scrape('https://example.com')
         
         if result['success']:
@@ -31,7 +32,7 @@ def main():
     print("\n\nExample 2: AI-Powered Q&A")
     print("-" * 40)
     
-    with BrowserNativeClient(API_KEY) as client:
+    with BrowserNativeClient(api_key=API_KEY, base_url=BASE_URL) as client:
         result = client.analyze(
             'https://news.ycombinator.com',
             'What are the top 3 stories on the homepage?'
@@ -67,7 +68,7 @@ def main():
         'https://rust-lang.org'
     ]
     
-    with BrowserNativeClient(API_KEY) as client:
+    with BrowserNativeClient(api_key=API_KEY, base_url=BASE_URL) as client:
         for url in urls:
             print(f"\nAnalyzing {url}...")
             result = client.analyze(url, 'What programming language is this about?')
